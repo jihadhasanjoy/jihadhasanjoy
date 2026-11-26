@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>Medicine Reminder feedback</title>
+  </head>
+  <body>
+    <script>
+      /*
+       * Feedback relay for the Medicine Reminder app.
+       *
+       * The app loads this page in a hidden WebView and calls sendFeedback() with the
+       * message. The page posts it to FormSubmit, the same inbox and service as this
+       * site's contact form. FormSubmit only accepts posts from pages served by a web
+       * server, which an app request is not, so the app sends through this real page.
+       *
+       * It acts only inside the app's WebView (window.ReactNativeWebView), and only
+       * passes on the four feedback fields, trimmed to the same limits as the app and
+       * firestore.rules. The result goes back to the app as a JSON message.
+       */
+      (function () {
+        var INBOX = "jihadhasanjoy@gmail.com";
+        var LIMITS = { message: 5000, name: 120, email: 200, device: 300 };
+        var bridge = window.ReactNativeWebView;
+
+        function reply(result) {
+          if (bridge) bridge.postMessage(JSON.stringify(result));
+        }
+
+        window.sendFeedback = function (payload) {
+          if (!bridge || !payload || typeof payload.message !== "string" || !payload.message.trim()) {
+            reply({ ok: false, error: "Nothing to send" });
+            return;
+          }
+
+          var fields = {};
+          Object.keys(LIMITS).forEach(function (key) {
+            if (typeof payload[key] === "string" && payload[key].trim()) {
+              fields[key] = payload[key].trim().slice(0, LIMITS[key]);
+            }
+          });
+
+          fetch("https://formsubmit.co/ajax/" + encodeURIComponent(INBOX), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify(
+              Object.assign(fields, {
+                _subject: "Medicine Reminder feedback",
+                _template: "table",
+                // Their captcha page breaks the AJAX flow.
+                _captcha: "false",
+              })
+            ),
+          })
+            .then(function (response) {
+              return response
+                .json()
+                .catch(function () {
+                  return {};
+                })
+                .then(function (body) {
+                  var ok = response.ok && String(body.success) === "true";
+                  reply(
+                    ok ? { ok: true } : { ok: false, error: body.message || "FormSubmit responded " + response.status }
+                  );
+                });
+            })
+            .catch(function (error) {
+              reply({ ok: false, error: String(error) });
+            });
+        };
+
+        reply({ ready: true });
+      })();
+    </script>
+  </body>
+</html>
